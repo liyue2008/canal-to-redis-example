@@ -1,0 +1,12 @@
+*.iml
+.idea/
+target
+.classpath
+.settings
+.project
+.factorypath
+*.log
+.vscode/
+# macOS
+.DS_Store
+
