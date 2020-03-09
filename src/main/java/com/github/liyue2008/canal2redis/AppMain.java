@@ -23,9 +23,7 @@ public class AppMain {
         CanalConnector connector = CanalConnectors.newSingleConnector(new InetSocketAddress(AddressUtils.getHostIp(),
                 11111), "example", "", "");
         int batchSize = 1000;
-        Jedis jedis = null ;
-        try {
-            jedis = new Jedis("127.0.0.1", 6379);
+        try (Jedis jedis = new Jedis("127.0.0.1", 6379)) {
             connector.connect();
             connector.subscribe(".*\\..*");
             connector.rollback();
@@ -37,7 +35,7 @@ public class AppMain {
                     if (batchId == -1 || size == 0) {
                         Thread.sleep(1000);
                     } else {
-                        printEntry(message.getEntries(), jedis);
+                        processEntries(message.getEntries(), jedis);
                     }
 
                     connector.ack(batchId); // 提交确认
@@ -47,35 +45,32 @@ public class AppMain {
             }
 
         } finally {
-            if(null != jedis) {
-                jedis.close();
-            }
             connector.disconnect();
 
         }
     }
 
-    private static void printEntry(List<CanalEntry.Entry> entrys, Jedis jedis) {
+    private static void processEntries(List<CanalEntry.Entry> entrys, Jedis jedis) {
         for (CanalEntry.Entry entry : entrys) {
             if (entry.getEntryType() == CanalEntry.EntryType.TRANSACTIONBEGIN || entry.getEntryType() == CanalEntry.EntryType.TRANSACTIONEND) {
                 continue;
             }
 
-            CanalEntry.RowChange rowChage = null;
+            CanalEntry.RowChange rowChange;
             try {
-                rowChage = CanalEntry.RowChange.parseFrom(entry.getStoreValue());
+                rowChange = CanalEntry.RowChange.parseFrom(entry.getStoreValue());
             } catch (Exception e) {
                 throw new RuntimeException("ERROR ## parser of eromanga-event has an error , data:" + entry.toString(),
                         e);
             }
 
-            CanalEntry.EventType eventType = rowChage.getEventType();
+            CanalEntry.EventType eventType = rowChange.getEventType();
             System.out.println(String.format("binlog[%s:%s] , name[%s,%s] , eventType : %s",
                     entry.getHeader().getLogfileName(), entry.getHeader().getLogfileOffset(),
                     entry.getHeader().getSchemaName(), entry.getHeader().getTableName(),
                     eventType));
 
-            for (CanalEntry.RowData rowData : rowChage.getRowDatasList()) {
+            for (CanalEntry.RowData rowData : rowChange.getRowDatasList()) {
                 if (eventType == CanalEntry.EventType.DELETE) { // 删除
                     printColumn(rowData.getBeforeColumnsList());
                     jedis.del(row2Key("user_id", rowData.getBeforeColumnsList()));
